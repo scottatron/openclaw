@@ -439,6 +439,16 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
 
       const reply = resolveSendableOutboundReplyParts(payload);
       const slackBlocks = readSlackReplyBlocks(payload);
+
+      // Flush any pending draft stream operations so messageId/channelId
+      // reflect the latest state before deciding whether to finalize via edit.
+      // Without this, a race between the throttled draft send and the final
+      // delivery callback can leave messageId() undefined, causing the
+      // finalize-via-edit path to be skipped and a duplicate message to be
+      // posted through deliverNormally. See #36935.
+      if (previewStreamingEnabled && hasStreamedMessage) {
+        await draftStream.flush();
+      }
       const draftMessageId = draftStream?.messageId();
       const draftChannelId = draftStream?.channelId();
       const finalText = reply.text;
@@ -473,6 +483,10 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
           );
         }
       } else if (previewStreamingEnabled && streamMode === "status_final" && hasStreamedMessage) {
+        // The status message is intentionally kept visible alongside the
+        // final reply, so mark the stream as consumed to skip the
+        // post-delivery cleanup below.
+        hasStreamedMessage = false;
         try {
           const statusChannelId = draftStream?.channelId();
           const statusMessageId = draftStream?.messageId();
@@ -487,12 +501,21 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         } catch (err) {
           logVerbose(`slack: status_final completion update failed (${String(err)})`);
         }
-      } else if (reply.hasMedia) {
-        await draftStream?.clear();
-        hasStreamedMessage = false;
+      } else if (hasStreamedMessage) {
+        // Draft cleanup is handled below, after deliverNormally succeeds.
+        draftStream?.stop();
       }
 
       await deliverNormally(payload);
+
+      // Delete the draft only after the new message has been posted
+      // successfully.  If deliverNormally throws (e.g. Slack API outage),
+      // the draft remains visible so the user still sees a response
+      // rather than an empty DM.  See #36935.
+      if (hasStreamedMessage) {
+        await draftStream?.clear();
+        hasStreamedMessage = false;
+      }
     },
     onError: (err, info) => {
       runtime.error?.(danger(`slack ${info.kind} reply failed: ${String(err)}`));
