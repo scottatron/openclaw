@@ -119,10 +119,29 @@ type SlackTopLevelDmThreadCommand = {
   suppressResetSessionNotice: boolean;
 };
 
+const DEFAULT_THREAD_BRANCH_TRIGGER = "/thread";
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function resolveThreadBranchTriggers(configured?: string[]): string[] {
+  const normalized = (configured ?? []).map((entry) => entry.trim()).filter(Boolean);
+  if (normalized.length === 0) {
+    return [DEFAULT_THREAD_BRANCH_TRIGGER];
+  }
+  const deduped = new Set<string>();
+  for (const trigger of normalized) {
+    deduped.add(trigger.toLowerCase());
+  }
+  return Array.from(deduped);
+}
+
 function resolveTopLevelDmThreadCommand(params: {
   isDirectMessage: boolean;
   isThreadReply: boolean;
   textForCommandDetection: string;
+  threadBranchTriggers?: string[];
 }): SlackTopLevelDmThreadCommand {
   const body = params.textForCommandDetection.trim();
   if (!params.isDirectMessage || params.isThreadReply) {
@@ -145,9 +164,19 @@ function resolveTopLevelDmThreadCommand(params: {
     .replace(/<@[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const threadMatch =
-    normalizedBody.match(/(?:^|\s)(?:@[^\s]+\s+)*\/thread(?:\s+|:\s*)(.+)$/i) ??
-    body.match(/(?:^|\n)\s*(?:@[^\s]+\s+)*\/thread(?:\s+|:\s*)(.+)$/i);
+  const triggers = resolveThreadBranchTriggers(params.threadBranchTriggers);
+  let threadMatch: RegExpMatchArray | null = null;
+  for (const trigger of triggers) {
+    const escapedTrigger = escapeRegex(trigger);
+    threadMatch =
+      normalizedBody.match(
+        new RegExp(`^(?:@[^\\s]+\\s+)*${escapedTrigger}(?:\\s+|:\\s*)(.+)$`, "i"),
+      ) ??
+      body.match(new RegExp(`^\\s*(?:@[^\\s]+\\s+)*${escapedTrigger}(?:\\s+|:\\s*)(.+)$`, "i"));
+    if (threadMatch) {
+      break;
+    }
+  }
   if (!threadMatch?.[1]?.trim()) {
     return {
       forceThreadFromCurrentMessage: false,
@@ -422,6 +451,7 @@ export async function prepareSlackMessage(params: {
     isDirectMessage,
     isThreadReply: Boolean(message.thread_ts && message.ts && message.thread_ts !== message.ts),
     textForCommandDetection,
+    threadBranchTriggers: account.config.threadBranchTriggers,
   });
   const forceThreadFromCurrentMessage = topLevelDmThreadCommand.forceThreadFromCurrentMessage;
   const normalizedCommandText = topLevelDmThreadCommand.normalizedCommandText;

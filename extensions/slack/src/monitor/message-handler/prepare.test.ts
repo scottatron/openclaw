@@ -459,6 +459,40 @@ describe("slack prepareSlackMessage inbound contract", () => {
     expect(prepared!.ctxPayload.SessionKey).toContain(":thread:9.002");
   });
 
+  it("supports custom thread branch trigger phrases via config", async () => {
+    const prepared = await prepareMessageWith(
+      createReplyToAllSlackCtx(),
+      createSlackAccount({
+        replyToMode: "all",
+        replyToModeByChatType: { direct: "off" },
+        threadBranchTriggers: ["branch"],
+      }),
+      createSlackMessage({ ts: "9.003", text: "branch let's split this topic" }),
+    );
+
+    expect(prepared).toBeTruthy();
+    expect(prepared!.ctxPayload.CommandBody).toBe("/new let's split this topic");
+    expect(prepared!.ctxPayload.MessageThreadId).toBe("9.003");
+    expect(prepared!.ctxPayload.SessionKey).toContain(":thread:9.003");
+  });
+
+  it("uses configured thread branch triggers instead of implicit /thread matching", async () => {
+    const prepared = await prepareMessageWith(
+      createReplyToAllSlackCtx(),
+      createSlackAccount({
+        replyToMode: "all",
+        replyToModeByChatType: { direct: "off" },
+        threadBranchTriggers: ["branch"],
+      }),
+      createSlackMessage({ ts: "9.004", text: "/thread this should not branch now" }),
+    );
+
+    expect(prepared).toBeTruthy();
+    expect(prepared!.ctxPayload.CommandBody).toBe("/thread this should not branch now");
+    expect(prepared!.ctxPayload.MessageThreadId).toBeUndefined();
+    expect(prepared!.ctxPayload.SessionKey).not.toContain(":thread:");
+  });
+
   it("still threads channel messages when replyToModeByChatType.direct is off", async () => {
     const prepared = await prepareMessageWith(
       createReplyToAllSlackCtx({

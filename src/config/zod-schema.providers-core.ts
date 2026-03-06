@@ -929,6 +929,7 @@ export const SlackAccountSchema = z
     reactionAllowlist: z.array(z.union([z.string(), z.number()])).optional(),
     replyToMode: ReplyToModeSchema.optional(),
     replyToModeByChatType: SlackReplyToModeByChatTypeSchema.optional(),
+    threadBranchTriggers: z.array(z.string()).optional(),
     thread: SlackThreadSchema.optional(),
     actions: z
       .object({

@@ -186,6 +186,11 @@ export type SlackAccountConfig = {
    * Example: { direct: "all", group: "first", channel: "off" }.
    */
   replyToModeByChatType?: Partial<Record<"direct" | "group" | "channel", ReplyToMode>>;
+  /**
+   * DM text triggers that start a new thread-scoped branch session.
+   * Defaults to ["/thread"] when unset.
+   */
+  threadBranchTriggers?: string[];
   /** Thread session behavior. */
   thread?: SlackThreadConfig;
   actions?: SlackActionConfig;
