@@ -194,6 +194,11 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const reactionMessageTs = prepared.ackReactionMessageTs;
   const messageTs = message.ts ?? message.event_ts;
   const incomingThreadTs = message.thread_ts;
+  const seededThreadTs =
+    prepared.forceThreadFromCurrentMessage && !isThreadReply ? messageTs : undefined;
+  const effectiveReplyToMode = seededThreadTs ? "all" : prepared.replyToMode;
+  const effectiveIncomingThreadTs = seededThreadTs ?? incomingThreadTs;
+  const effectiveStatusThreadTs = seededThreadTs ?? statusThreadTs;
   let didSetStatus = false;
   const statusReactionsEnabled =
     Boolean(prepared.ackReactionPromise) &&
@@ -251,14 +256,16 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   // mark this to ensure only the first reply is threaded.
   const hasRepliedRef = { value: false };
   const replyPlan = createSlackReplyDeliveryPlan({
-    replyToMode: prepared.replyToMode,
-    incomingThreadTs,
+    replyToMode: effectiveReplyToMode,
+    incomingThreadTs: effectiveIncomingThreadTs,
     messageTs,
     hasRepliedRef,
     isThreadReply,
   });
 
-  const typingTarget = statusThreadTs ? `${message.channel}/${statusThreadTs}` : message.channel;
+  const typingTarget = effectiveStatusThreadTs
+    ? `${message.channel}/${effectiveStatusThreadTs}`
+    : message.channel;
   const typingReaction = ctx.typingReaction;
   const { onModelSelected, ...replyPipeline } = createChannelReplyPipeline({
     cfg,
@@ -324,8 +331,8 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     nativeStreaming: account.config.nativeStreaming,
   });
   const streamThreadHint = resolveSlackStreamingThreadHint({
-    replyToMode: prepared.replyToMode,
-    incomingThreadTs,
+    replyToMode: effectiveReplyToMode,
+    incomingThreadTs: effectiveIncomingThreadTs,
     messageTs,
     isThreadReply,
   });
@@ -361,7 +368,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       runtime,
       textLimit: ctx.textLimit,
       replyThreadTs,
-      replyToMode: prepared.replyToMode,
+      replyToMode: effectiveReplyToMode,
       ...(slackIdentity ? { identity: slackIdentity } : {}),
     });
     observedReplyDelivery = true;

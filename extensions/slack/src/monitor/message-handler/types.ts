@@ -21,4 +21,6 @@ export type PreparedSlackMessage = {
   ackReactionMessageTs?: string;
   ackReactionValue: string;
   ackReactionPromise: Promise<boolean> | null;
+  /** One-turn override to seed a DM thread from the current top-level message. */
+  forceThreadFromCurrentMessage: boolean;
 };

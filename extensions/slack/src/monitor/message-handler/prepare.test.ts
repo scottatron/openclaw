@@ -415,6 +415,20 @@ describe("slack prepareSlackMessage inbound contract", () => {
     expect(prepared!.ctxPayload.MessageThreadId).toBeUndefined();
   });
 
+  it("maps top-level DM /thread prompts to threaded /new command context", async () => {
+    const prepared = await prepareMessageWith(
+      createReplyToAllSlackCtx(),
+      createSlackAccount({ replyToMode: "all", replyToModeByChatType: { direct: "off" } }),
+      createSlackMessage({ ts: "9.000", text: " /thread branch this" }),
+    );
+
+    expect(prepared).toBeTruthy();
+    expect(prepared!.replyToMode).toBe("off");
+    expect(prepared!.ctxPayload.CommandBody).toBe("/new branch this");
+    expect(prepared!.ctxPayload.MessageThreadId).toBe("9.000");
+    expect(prepared!.ctxPayload.SessionKey).toContain(":thread:9.000");
+  });
+
   it("still threads channel messages when replyToModeByChatType.direct is off", async () => {
     const prepared = await prepareMessageWith(
       createReplyToAllSlackCtx({

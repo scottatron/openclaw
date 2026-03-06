@@ -113,6 +113,44 @@ type SlackRoutingContext = {
   historyKey: string;
 };
 
+type SlackTopLevelDmThreadCommand = {
+  forceThreadFromCurrentMessage: boolean;
+  normalizedCommandText: string;
+};
+
+function resolveTopLevelDmThreadCommand(params: {
+  isDirectMessage: boolean;
+  isThreadReply: boolean;
+  textForCommandDetection: string;
+}): SlackTopLevelDmThreadCommand {
+  const body = params.textForCommandDetection.trim();
+  if (!params.isDirectMessage || params.isThreadReply) {
+    return {
+      forceThreadFromCurrentMessage: false,
+      normalizedCommandText: body,
+    };
+  }
+  if (!body) {
+    return {
+      forceThreadFromCurrentMessage: false,
+      normalizedCommandText: body,
+    };
+  }
+  const threadMatch = body.match(/^\/thread(?:\s+|:\s*)(.+)$/i);
+  if (!threadMatch?.[1]?.trim()) {
+    return {
+      forceThreadFromCurrentMessage: false,
+      normalizedCommandText: body,
+    };
+  }
+  const prompt = threadMatch[1].trim();
+  return {
+    forceThreadFromCurrentMessage: true,
+    // Alias /thread to /new so existing command behavior is reused.
+    normalizedCommandText: `/new ${prompt}`,
+  };
+}
+
 async function resolveSlackConversationContext(params: {
   ctx: SlackMonitorContext;
   account: ResolvedSlackAccount;
@@ -266,8 +304,18 @@ function resolveSlackRoutingContext(params: {
   isGroupDm: boolean;
   isRoom: boolean;
   isRoomish: boolean;
+  forceThreadFromCurrentMessage: boolean;
 }): SlackRoutingContext {
-  const { ctx, account, message, isDirectMessage, isGroupDm, isRoom, isRoomish } = params;
+  const {
+    ctx,
+    account,
+    message,
+    isDirectMessage,
+    isGroupDm,
+    isRoom,
+    isRoomish,
+    forceThreadFromCurrentMessage,
+  } = params;
   const route = resolveAgentRoute({
     cfg: ctx.cfg,
     channel: "slack",
@@ -297,7 +345,13 @@ function resolveSlackRoutingContext(params: {
   // Before this fix, every channel message used its own ts as threadId, creating
   // isolated sessions per message (regression from #10686).
   const roomThreadId = isThreadReply && threadTs ? threadTs : undefined;
-  const canonicalThreadId = isRoomish ? roomThreadId : isThreadReply ? threadTs : autoThreadId;
+  const dmThreadId =
+    isThreadReply && threadTs
+      ? threadTs
+      : forceThreadFromCurrentMessage && threadContext.messageTs
+        ? threadContext.messageTs
+        : autoThreadId;
+  const canonicalThreadId = isRoomish ? roomThreadId : dmThreadId;
   const threadKeys = resolveThreadSessionKeys({
     baseSessionKey: route.sessionKey,
     threadId: canonicalThreadId,
@@ -349,6 +403,16 @@ export async function prepareSlackMessage(params: {
     return null;
   }
   const { senderId, allowFromLower } = authorization;
+  // Strip Slack mentions (<@U123>) before command detection so "@Labrador /new" is recognized.
+  const textForCommandDetection = stripSlackMentionsForCommandDetection(message.text ?? "");
+  const topLevelDmThreadCommand = resolveTopLevelDmThreadCommand({
+    isDirectMessage,
+    isThreadReply: Boolean(message.thread_ts && message.ts && message.thread_ts !== message.ts),
+    textForCommandDetection,
+  });
+  const forceThreadFromCurrentMessage = topLevelDmThreadCommand.forceThreadFromCurrentMessage;
+  const normalizedCommandText = topLevelDmThreadCommand.normalizedCommandText;
+
   const routing = resolveSlackRoutingContext({
     ctx,
     account,
@@ -357,6 +421,7 @@ export async function prepareSlackMessage(params: {
     isGroupDm,
     isRoom,
     isRoomish,
+    forceThreadFromCurrentMessage,
   });
   const {
     route,
@@ -368,6 +433,10 @@ export async function prepareSlackMessage(params: {
     sessionKey,
     historyKey,
   } = routing;
+  const effectiveMessageThreadId =
+    forceThreadFromCurrentMessage && !isThreadReply
+      ? threadContext.messageTs
+      : threadContext.messageThreadId;
 
   const mentionRegexes = resolveCachedMentionRegexes(ctx, route.agentId);
   const hasAnyMention = /<@[^>]+>/.test(message.text ?? "");
@@ -429,9 +498,7 @@ export async function prepareSlackMessage(params: {
     cfg,
     surface: "slack",
   });
-  // Strip Slack mentions (<@U123>) before command detection so "@Labrador /new" is recognized
-  const textForCommandDetection = stripSlackMentionsForCommandDetection(message.text ?? "");
-  const hasControlCommandInMessage = hasControlCommand(textForCommandDetection, cfg);
+  const hasControlCommandInMessage = hasControlCommand(normalizedCommandText, cfg);
 
   const ownerAuthorized = resolveSlackAllowListMatch({
     allowList: allowFromLower,
@@ -707,7 +774,7 @@ export async function prepareSlackMessage(params: {
           timestamp: entry.timestamp,
         }))
       : undefined;
-  const commandBody = textForCommandDetection.trim();
+  const commandBody = normalizedCommandText.trim();
 
   const ctxPayload = finalizeInboundContext({
     Body: combinedBody,
@@ -732,7 +799,7 @@ export async function prepareSlackMessage(params: {
     MessageSid: message.ts,
     ReplyToId: threadContext.replyToId,
     // Preserve thread context for routed tool notifications.
-    MessageThreadId: threadContext.messageThreadId,
+    MessageThreadId: effectiveMessageThreadId,
     ParentSessionKey: threadKeys.parentSessionKey,
     // Only include thread starter body for NEW sessions (existing sessions already have it in their transcript)
     ThreadStarterBody: !threadSessionPreviousTimestamp ? threadStarterBody : undefined,
@@ -776,7 +843,7 @@ export async function prepareSlackMessage(params: {
           channel: "slack",
           to: `user:${message.user}`,
           accountId: route.accountId,
-          threadId: threadContext.messageThreadId,
+          threadId: effectiveMessageThreadId,
           mainDmOwnerPin:
             pinnedMainDmOwner && message.user
               ? {
@@ -828,5 +895,6 @@ export async function prepareSlackMessage(params: {
     ackReactionMessageTs,
     ackReactionValue,
     ackReactionPromise,
+    forceThreadFromCurrentMessage,
   };
 }

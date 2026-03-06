@@ -847,4 +847,14 @@ describe("monitorSlackProvider tool results", () => {
 
     expectSingleSendWithThread("789");
   });
+
+  it("threads top-level DM /thread with prompt even when replyToMode is off", async () => {
+    replyMock.mockResolvedValue({ text: "branched reply" });
+    setDirectMessageReplyMode("off");
+    await runDirectMessageEvent("789", { text: " /thread how does this work?" });
+
+    expectSingleSendWithThread("789");
+    const ctx = getFirstReplySessionCtx();
+    expect(ctx.SessionKey).toBe("agent:main:main:thread:789");
+  });
 });
