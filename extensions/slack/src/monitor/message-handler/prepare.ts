@@ -124,6 +124,9 @@ function resolveTopLevelDmThreadCommand(params: {
   textForCommandDetection: string;
 }): SlackTopLevelDmThreadCommand {
   const body = params.textForCommandDetection.trim();
+  // In DMs users often type human-style mentions like "@openclaw /thread ...".
+  // Strip leading plain-text @mentions before command parsing.
+  const normalizedBody = body.replace(/^(?:@[^\s]+\s+)+/, "");
   if (!params.isDirectMessage || params.isThreadReply) {
     return {
       forceThreadFromCurrentMessage: false,
@@ -136,7 +139,7 @@ function resolveTopLevelDmThreadCommand(params: {
       normalizedCommandText: body,
     };
   }
-  const threadMatch = body.match(/^\/thread(?:\s+|:\s*)(.+)$/i);
+  const threadMatch = normalizedBody.match(/^\/thread(?:\s+|:\s*)(.+)$/i);
   if (!threadMatch?.[1]?.trim()) {
     return {
       forceThreadFromCurrentMessage: false,
