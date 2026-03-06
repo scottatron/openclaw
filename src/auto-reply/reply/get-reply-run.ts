@@ -453,7 +453,7 @@ export async function runPreparedReply(
       }
     }
   }
-  if (resetTriggered && command.isAuthorizedSender) {
+  if (resetTriggered && command.isAuthorizedSender && ctx.SuppressResetSessionNotice !== true) {
     await sendResetSessionNotice({
       ctx,
       command,

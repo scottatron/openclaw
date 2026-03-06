@@ -116,6 +116,7 @@ type SlackRoutingContext = {
 type SlackTopLevelDmThreadCommand = {
   forceThreadFromCurrentMessage: boolean;
   normalizedCommandText: string;
+  suppressResetSessionNotice: boolean;
 };
 
 function resolveTopLevelDmThreadCommand(params: {
@@ -128,12 +129,14 @@ function resolveTopLevelDmThreadCommand(params: {
     return {
       forceThreadFromCurrentMessage: false,
       normalizedCommandText: body,
+      suppressResetSessionNotice: false,
     };
   }
   if (!body) {
     return {
       forceThreadFromCurrentMessage: false,
       normalizedCommandText: body,
+      suppressResetSessionNotice: false,
     };
   }
   // Be permissive about wrappers: users often send things like
@@ -149,6 +152,7 @@ function resolveTopLevelDmThreadCommand(params: {
     return {
       forceThreadFromCurrentMessage: false,
       normalizedCommandText: body,
+      suppressResetSessionNotice: false,
     };
   }
   const prompt = threadMatch[1].trim();
@@ -156,6 +160,7 @@ function resolveTopLevelDmThreadCommand(params: {
     forceThreadFromCurrentMessage: true,
     // Alias /thread to /new so existing command behavior is reused.
     normalizedCommandText: `/new ${prompt}`,
+    suppressResetSessionNotice: true,
   };
 }
 
@@ -420,6 +425,7 @@ export async function prepareSlackMessage(params: {
   });
   const forceThreadFromCurrentMessage = topLevelDmThreadCommand.forceThreadFromCurrentMessage;
   const normalizedCommandText = topLevelDmThreadCommand.normalizedCommandText;
+  const suppressResetSessionNotice = topLevelDmThreadCommand.suppressResetSessionNotice;
 
   const routing = resolveSlackRoutingContext({
     ctx,
@@ -829,6 +835,7 @@ export async function prepareSlackMessage(params: {
         ? effectiveMedia.map((m) => m.contentType ?? "")
         : undefined,
     CommandAuthorized: commandAuthorized,
+    SuppressResetSessionNotice: suppressResetSessionNotice,
     OriginatingChannel: "slack" as const,
     OriginatingTo: slackTo,
     NativeChannelId: message.channel,

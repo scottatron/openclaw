@@ -425,6 +425,7 @@ describe("slack prepareSlackMessage inbound contract", () => {
     expect(prepared).toBeTruthy();
     expect(prepared!.replyToMode).toBe("off");
     expect(prepared!.ctxPayload.CommandBody).toBe("/new branch this");
+    expect(prepared!.ctxPayload.SuppressResetSessionNotice).toBe(true);
     expect(prepared!.ctxPayload.MessageThreadId).toBe("9.000");
     expect(prepared!.ctxPayload.SessionKey).toContain(":thread:9.000");
   });

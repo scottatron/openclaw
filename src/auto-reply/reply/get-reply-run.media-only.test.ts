@@ -293,6 +293,24 @@ describe("runPreparedReply media-only handling", () => {
     expect(vi.mocked(routeReply)).not.toHaveBeenCalled();
   });
 
+  it("skips reset notice when SuppressResetSessionNotice is set", async () => {
+    await runPreparedReply(
+      baseParams({
+        resetTriggered: true,
+        ctx: {
+          Body: "",
+          RawBody: "/new branch",
+          CommandBody: "/new branch",
+          SuppressResetSessionNotice: true,
+          OriginatingChannel: "slack",
+          OriginatingTo: "D123",
+        },
+      }),
+    );
+
+    expect(vi.mocked(routeReply)).not.toHaveBeenCalled();
+  });
+
   it("uses inbound origin channel for run messageProvider", async () => {
     await runPreparedReply(
       baseParams({

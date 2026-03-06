@@ -154,6 +154,11 @@ export type MsgContext = {
    * Used for `/new <prompt>` and `/reset <prompt>` on ACP-bound sessions.
    */
   AcpDispatchTailAfterReset?: boolean;
+  /**
+   * Internal flag: suppresses the "New session started" notice for command aliases
+   * that intentionally reset context as part of normal flow (for example Slack /thread).
+   */
+  SuppressResetSessionNotice?: boolean;
   /** Gateway client scopes when the message originates from the gateway. */
   GatewayClientScopes?: string[];
   /** Trusted system override for contexts that must never inherit owner semantics. */
