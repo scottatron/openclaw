@@ -1128,6 +1128,7 @@
     "plugin-sdk:facades:gen": "node scripts/generate-plugin-sdk-facades.mjs --write",
     "plugin-sdk:sync-exports": "node scripts/sync-plugin-sdk-exports.mjs",
     "plugin-sdk:usage": "node --import tsx scripts/analyze-plugin-sdk-usage.ts",
+    "plugins:bundled:select": "node scripts/select-bundled-plugin-exclusions.mjs",
     "plugins:sync": "node --import tsx scripts/sync-plugin-versions.ts",
     "postinstall": "node scripts/postinstall-bundled-plugins.mjs",
     "prepack": "node --import tsx scripts/openclaw-prepack.ts",
