@@ -59,7 +59,7 @@ function expectMissingBundledProviderEnvVars(providerIds: readonly string[]) {
 describe("bundled provider auth env vars", () => {
   it("matches the generated manifest snapshot", () => {
     expect(BUNDLED_PROVIDER_AUTH_ENV_VAR_CANDIDATES).toEqual(
-      collectBundledProviderAuthEnvVars({ repoRoot }),
+      collectBundledProviderAuthEnvVars({ repoRoot, env: {} }),
     );
   });
 
@@ -105,6 +105,32 @@ describe("bundled provider auth env vars", () => {
       tempRoot,
       expectedChanged: true,
       expectedWrote: false,
+    });
+  });
+
+  it("skips explicitly excluded bundled plugins", () => {
+    const tempRoot = createGeneratedPluginTempRoot("openclaw-provider-auth-env-vars-excluded-");
+
+    writeJson(path.join(tempRoot, "extensions", "alpha", "openclaw.plugin.json"), {
+      id: "alpha",
+      providerAuthEnvVars: {
+        alpha: ["ALPHA_TOKEN"],
+      },
+    });
+    writeJson(path.join(tempRoot, "extensions", "beta", "openclaw.plugin.json"), {
+      id: "beta",
+      providerAuthEnvVars: {
+        beta: ["BETA_TOKEN"],
+      },
+    });
+
+    expect(
+      collectBundledProviderAuthEnvVars({
+        repoRoot: tempRoot,
+        env: { OPENCLAW_EXCLUDE_BUNDLED_PLUGINS: "alpha" },
+      }),
+    ).toEqual({
+      beta: ["BETA_TOKEN"],
     });
   });
 });

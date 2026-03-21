@@ -1,6 +1,7 @@
 import path from "node:path";
 import { collectBundledPluginSources } from "./lib/bundled-plugin-source-utils.mjs";
 import { reportGeneratedOutputCli, writeGeneratedOutput } from "./lib/generated-output-utils.mjs";
+import { shouldBuildBundledCluster } from "./lib/optional-bundled-clusters.mjs";
 
 const GENERATED_BY = "scripts/generate-bundled-provider-auth-env-vars.mjs";
 const DEFAULT_OUTPUT_PATH = "src/plugins/bundled-provider-auth-env-vars.generated.ts";
@@ -31,8 +32,12 @@ function normalizeProviderAuthEnvVars(providerAuthEnvVars) {
 
 export function collectBundledProviderAuthEnvVars(params = {}) {
   const repoRoot = path.resolve(params.repoRoot ?? process.cwd());
+  const env = params.env ?? process.env;
   const entries = new Map();
   for (const source of collectBundledPluginSources({ repoRoot })) {
+    if (!shouldBuildBundledCluster(source.dirName, env, { packageJson: source.packageJson })) {
+      continue;
+    }
     for (const [providerId, envVars] of normalizeProviderAuthEnvVars(
       source.manifest.providerAuthEnvVars,
     )) {
@@ -66,7 +71,7 @@ ${renderedEntries}
 export function writeBundledProviderAuthEnvVarModule(params = {}) {
   const repoRoot = path.resolve(params.repoRoot ?? process.cwd());
   const next = renderBundledProviderAuthEnvVarModule(
-    collectBundledProviderAuthEnvVars({ repoRoot }),
+    collectBundledProviderAuthEnvVars({ repoRoot, env: params.env }),
   );
   return writeGeneratedOutput({
     repoRoot,

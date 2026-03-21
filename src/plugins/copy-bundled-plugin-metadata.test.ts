@@ -13,6 +13,7 @@ const copyBundledPluginMetadataWithEnv = copyBundledPluginMetadata as (params?: 
   repoRoot?: string;
   env?: NodeJS.ProcessEnv;
 }) => void;
+const includeOptionalEnv = { OPENCLAW_INCLUDE_OPTIONAL_BUNDLED: "1" };
 
 function makeRepoRoot(prefix: string): string {
   return makeTempRepoRoot(tempDirs, prefix);
@@ -109,8 +110,14 @@ describe("copyBundledPluginMetadata", () => {
       "# ACP Router\n",
       "utf8",
     );
+    fs.mkdirSync(path.join(repoRoot, "dist", "extensions", "acpx"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoRoot, "dist", "extensions", "acpx", "index.js"),
+      "export default {}\n",
+      "utf8",
+    );
 
-    copyBundledPluginMetadata({ repoRoot });
+    copyBundledPluginMetadata({ repoRoot, env: includeOptionalEnv });
 
     expect(
       fs.existsSync(path.join(repoRoot, "dist", "extensions", "acpx", "openclaw.plugin.json")),
@@ -124,6 +131,43 @@ describe("copyBundledPluginMetadata", () => {
     expectBundledSkills(repoRoot, "acpx", ["./skills"]);
     const packageJson = readBundledPackageJson(repoRoot, "acpx");
     expect(packageJson.openclaw?.extensions).toEqual(["./index.js"]);
+  });
+
+  it("omits extension metadata for optional bundled outputs that were not built", () => {
+    const repoRoot = makeRepoRoot("openclaw-bundled-plugin-missing-entry-");
+    const pluginDir = path.join(repoRoot, "extensions", "matrix");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    writeJson(path.join(pluginDir, "openclaw.plugin.json"), {
+      id: "matrix",
+      configSchema: { type: "object" },
+    });
+    writeJson(path.join(pluginDir, "package.json"), {
+      name: "@openclaw/matrix",
+      openclaw: {
+        extensions: ["./index.ts"],
+        setupEntry: "./setup-entry.ts",
+        install: {
+          npmSpec: "@openclaw/matrix",
+          localPath: "extensions/matrix",
+          defaultChoice: "npm",
+        },
+      },
+    });
+
+    copyBundledPluginMetadata({ repoRoot, env: includeOptionalEnv });
+
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, "dist", "extensions", "matrix", "package.json"), "utf8"),
+    ) as {
+      openclaw?: {
+        extensions?: string[];
+        setupEntry?: string;
+        install?: { npmSpec?: string };
+      };
+    };
+    expect(packageJson.openclaw?.extensions).toBeUndefined();
+    expect(packageJson.openclaw?.setupEntry).toBeUndefined();
+    expect(packageJson.openclaw?.install?.npmSpec).toBe("@openclaw/matrix");
   });
 
   it("relocates node_modules-backed skill paths into bundled-skills and rewrites the manifest", () => {
@@ -161,7 +205,7 @@ describe("copyBundledPluginMetadata", () => {
     fs.mkdirSync(staleNodeModulesSkillDir, { recursive: true });
     fs.writeFileSync(path.join(staleNodeModulesSkillDir, "stale.txt"), "stale\n", "utf8");
 
-    copyBundledPluginMetadata({ repoRoot });
+    copyBundledPluginMetadata({ repoRoot, env: includeOptionalEnv });
 
     const copiedSkillDir = path.join(
       bundledPluginDir(repoRoot, "tlon"),
@@ -186,7 +230,7 @@ describe("copyBundledPluginMetadata", () => {
     fs.writeFileSync(path.join(hoistedSkillDir, "SKILL.md"), "# Hoisted Tlon Skill\n", "utf8");
     fs.mkdirSync(pluginDir, { recursive: true });
 
-    copyBundledPluginMetadata({ repoRoot });
+    copyBundledPluginMetadata({ repoRoot, env: includeOptionalEnv });
 
     expect(
       fs.readFileSync(
@@ -211,7 +255,7 @@ describe("copyBundledPluginMetadata", () => {
     const staleNodeModulesDir = path.join(bundledPluginDir(repoRoot, "tlon"), "node_modules");
     fs.mkdirSync(staleNodeModulesDir, { recursive: true });
 
-    copyBundledPluginMetadata({ repoRoot });
+    copyBundledPluginMetadata({ repoRoot, env: includeOptionalEnv });
 
     expectBundledSkills(repoRoot, "tlon", []);
     expect(fs.existsSync(path.join(repoRoot, "dist", "extensions", "tlon", "bundled-skills"))).toBe(
@@ -243,7 +287,7 @@ describe("copyBundledPluginMetadata", () => {
     });
 
     try {
-      copyBundledPluginMetadata({ repoRoot });
+      copyBundledPluginMetadata({ repoRoot, env: includeOptionalEnv });
     } finally {
       cpSyncSpy.mockRestore();
     }
@@ -397,5 +441,29 @@ describe("copyBundledPluginMetadata", () => {
       name: "@openclaw/image-generation-core",
       type: "module",
     });
+  });
+
+  it("removes explicitly excluded bundled plugins from dist outputs", () => {
+    const repoRoot = makeRepoRoot("openclaw-bundled-plugin-excluded-");
+    const pluginDir = path.join(repoRoot, "extensions", "zalo");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    writeJson(path.join(pluginDir, "openclaw.plugin.json"), {
+      id: "zalo",
+      configSchema: { type: "object" },
+    });
+    writeJson(path.join(pluginDir, "package.json"), {
+      name: "@openclaw/zalo",
+      openclaw: { extensions: ["./index.ts"] },
+    });
+    const staleDistDir = path.join(repoRoot, "dist", "extensions", "zalo");
+    fs.mkdirSync(staleDistDir, { recursive: true });
+    fs.writeFileSync(path.join(staleDistDir, "index.js"), "export default {}\n", "utf8");
+
+    copyBundledPluginMetadata({
+      repoRoot,
+      env: { OPENCLAW_EXCLUDE_BUNDLED_PLUGINS: "zalo" },
+    });
+
+    expect(fs.existsSync(staleDistDir)).toBe(false);
   });
 });

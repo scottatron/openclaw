@@ -1,6 +1,8 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { renderRootHelpText } from "../src/cli/program/root-help.ts";
+import { shouldBuildBundledCluster } from "./lib/optional-bundled-clusters.mjs";
 
 function dedupe(values: string[]): string[] {
   const seen = new Set<string>();
@@ -15,12 +17,8 @@ function dedupe(values: string[]): string[] {
   return out;
 }
 
-const scriptPath = fileURLToPath(import.meta.url);
-const scriptDir = path.dirname(scriptPath);
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, "..");
-const distDir = path.join(rootDir, "dist");
-const outputPath = path.join(distDir, "cli-startup-metadata.json");
-const extensionsDir = path.join(rootDir, "extensions");
 const CORE_CHANNEL_ORDER = [
   "telegram",
   "whatsapp",
@@ -39,14 +37,23 @@ type ExtensionChannelEntry = {
 };
 
 export function readBundledChannelCatalogIds(
-  extensionsDirOverride: string = extensionsDir,
+  params: {
+    env?: NodeJS.ProcessEnv;
+    rootDir?: string;
+  } = {},
 ): string[] {
+  const env = params.env ?? process.env;
+  const resolvedRootDir = path.resolve(params.rootDir ?? rootDir);
+  const extensionsDir = path.join(resolvedRootDir, "extensions");
+  if (!existsSync(extensionsDir)) {
+    return [];
+  }
   const entries: ExtensionChannelEntry[] = [];
-  for (const dirEntry of readdirSync(extensionsDirOverride, { withFileTypes: true })) {
+  for (const dirEntry of readdirSync(extensionsDir, { withFileTypes: true })) {
     if (!dirEntry.isDirectory()) {
       continue;
     }
-    const packageJsonPath = path.join(extensionsDirOverride, dirEntry.name, "package.json");
+    const packageJsonPath = path.join(extensionsDir, dirEntry.name, "package.json");
     try {
       const raw = readFileSync(packageJsonPath, "utf8");
       const parsed = JSON.parse(raw) as {
@@ -58,6 +65,9 @@ export function readBundledChannelCatalogIds(
           };
         };
       };
+      if (!shouldBuildBundledCluster(dirEntry.name, env, { packageJson: parsed })) {
+        continue;
+      }
       const id = parsed.openclaw?.channel?.id;
       if (typeof id !== "string" || !id.trim()) {
         continue;
@@ -78,57 +88,29 @@ export function readBundledChannelCatalogIds(
     .map((entry) => entry.id);
 }
 
-async function captureStdout(action: () => void | Promise<void>): Promise<string> {
-  let output = "";
-  const originalWrite = process.stdout.write.bind(process.stdout);
-  const captureWrite: typeof process.stdout.write = ((chunk: string | Uint8Array) => {
-    output += String(chunk);
-    return true;
-  }) as typeof process.stdout.write;
-  process.stdout.write = captureWrite;
-  try {
-    await action();
-  } finally {
-    process.stdout.write = originalWrite;
-  }
-  return output;
-}
-
-export async function renderBundledRootHelpText(
-  distDirOverride: string = distDir,
-): Promise<string> {
-  const bundleName = readdirSync(distDirOverride).find(
-    (entry) => entry.startsWith("root-help-") && entry.endsWith(".js"),
+export function writeCliStartupMetadata(
+  params: {
+    env?: NodeJS.ProcessEnv;
+    outputPath?: string;
+    rootDir?: string;
+  } = {},
+): void {
+  const resolvedRootDir = path.resolve(params.rootDir ?? rootDir);
+  const distDir = path.join(resolvedRootDir, "dist");
+  const outputPath = path.resolve(
+    resolvedRootDir,
+    params.outputPath ?? path.join("dist", "cli-startup-metadata.json"),
   );
-  if (!bundleName) {
-    throw new Error("No root-help bundle found in dist; cannot write CLI startup metadata.");
-  }
-  const moduleUrl = pathToFileURL(path.join(distDirOverride, bundleName)).href;
-  const mod = (await import(moduleUrl)) as { outputRootHelp?: () => void | Promise<void> };
-  if (typeof mod.outputRootHelp !== "function") {
-    throw new Error(`Bundle ${bundleName} does not export outputRootHelp.`);
-  }
-
-  return captureStdout(async () => {
-    await mod.outputRootHelp?.();
+  const catalog = readBundledChannelCatalogIds({
+    env: params.env,
+    rootDir: resolvedRootDir,
   });
-}
-
-export async function writeCliStartupMetadata(options?: {
-  distDir?: string;
-  outputPath?: string;
-  extensionsDir?: string;
-}): Promise<void> {
-  const resolvedDistDir = options?.distDir ?? distDir;
-  const resolvedOutputPath = options?.outputPath ?? outputPath;
-  const resolvedExtensionsDir = options?.extensionsDir ?? extensionsDir;
-  const catalog = readBundledChannelCatalogIds(resolvedExtensionsDir);
   const channelOptions = dedupe([...CORE_CHANNEL_ORDER, ...catalog]);
-  const rootHelpText = await renderBundledRootHelpText(resolvedDistDir);
+  const rootHelpText = renderRootHelpText();
 
-  mkdirSync(resolvedDistDir, { recursive: true });
+  mkdirSync(distDir, { recursive: true });
   writeFileSync(
-    resolvedOutputPath,
+    outputPath,
     `${JSON.stringify(
       {
         generatedBy: "scripts/write-cli-startup-metadata.ts",
@@ -142,6 +124,6 @@ export async function writeCliStartupMetadata(options?: {
   );
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
-  await writeCliStartupMetadata();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  writeCliStartupMetadata();
 }

@@ -74,6 +74,34 @@ function rewritePackageEntry(entry) {
   return `./${rewritten}`;
 }
 
+function hasBundledEntryOutput(distPluginDir, entryPath) {
+  if (typeof entryPath !== "string" || entryPath.trim().length === 0) {
+    return false;
+  }
+  try {
+    return fs.existsSync(ensurePathInsideRoot(distPluginDir, entryPath));
+  } catch {
+    return false;
+  }
+}
+
+function selectBundledPackageExtensions(entries, distPluginDir) {
+  const rewritten = rewritePackageExtensions(entries);
+  if (!rewritten) {
+    return undefined;
+  }
+  const bundled = rewritten.filter((entry) => hasBundledEntryOutput(distPluginDir, entry));
+  return bundled.length > 0 ? bundled : undefined;
+}
+
+function selectBundledPackageSetupEntry(entry, distPluginDir) {
+  const rewritten = rewritePackageEntry(entry);
+  if (!rewritten || !hasBundledEntryOutput(distPluginDir, rewritten)) {
+    return undefined;
+  }
+  return rewritten;
+}
+
 function ensurePathInsideRoot(rootDir, rawPath) {
   const resolved = path.resolve(rootDir, rawPath);
   const relative = path.relative(rootDir, resolved);
@@ -247,7 +275,6 @@ export function copyBundledPluginMetadata(params = {}) {
       });
 
     sourcePluginDirs.add(dirent.name);
-
     const distManifestPath = path.join(distPluginDir, "openclaw.plugin.json");
     const distPackageJsonPath = path.join(distPluginDir, "package.json");
     if (!fs.existsSync(manifestPath) && !isManifestlessSupportPackage) {
@@ -280,12 +307,23 @@ export function copyBundledPluginMetadata(params = {}) {
       continue;
     }
     if (packageJson.openclaw && "extensions" in packageJson.openclaw) {
+      const {
+        extensions: _extensions,
+        setupEntry: _setupEntry,
+        ...restOpenClaw
+      } = packageJson.openclaw;
+      const bundledExtensions = selectBundledPackageExtensions(
+        packageJson.openclaw.extensions,
+        distPluginDir,
+      );
+      const bundledSetupEntry = selectBundledPackageSetupEntry(
+        packageJson.openclaw.setupEntry,
+        distPluginDir,
+      );
       packageJson.openclaw = {
-        ...packageJson.openclaw,
-        extensions: rewritePackageExtensions(packageJson.openclaw.extensions),
-        ...(typeof packageJson.openclaw.setupEntry === "string"
-          ? { setupEntry: rewritePackageEntry(packageJson.openclaw.setupEntry) }
-          : {}),
+        ...restOpenClaw,
+        ...(bundledExtensions ? { extensions: bundledExtensions } : {}),
+        ...(bundledSetupEntry ? { setupEntry: bundledSetupEntry } : {}),
       };
     }
 
