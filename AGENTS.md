@@ -4,6 +4,12 @@
 - In chat replies, file references must be repo-root relative only (example: `src/telegram/index.ts:80`); never absolute paths or `~/...`.
 - Do not edit files covered by security-focused `CODEOWNERS` rules unless a listed owner explicitly asked for the change or is already reviewing it with you. Treat those paths as restricted surfaces, not drive-by cleanup.
 
+## Fork Maintenance
+
+- Fork: `scottatron/openclaw` on branch `my-fork`
+- Track `upstream/main`
+- After rebasing onto a new upstream release, set the fork version in `package.json` to a date newer than the latest upstream release date, then append `-my-fork.<n>` so update checks continue to prefer the fork build over upstream (for example, if upstream is `2026.3.25`, use `2026.3.27-my-fork.1`).
+
 ## Project Structure & Module Organization
 
 - Source code: `src/` (CLI wiring in `src/cli`, commands in `src/commands`, web provider in `src/provider-web.ts`, infra in `src/infra`, media pipeline in `src/media`).
