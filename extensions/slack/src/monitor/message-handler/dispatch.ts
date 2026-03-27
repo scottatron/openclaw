@@ -446,8 +446,8 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       // delivery callback can leave messageId() undefined, causing the
       // finalize-via-edit path to be skipped and a duplicate message to be
       // posted through deliverNormally. See #36935.
-      if (previewStreamingEnabled && hasStreamedMessage) {
-        await draftStream.flush();
+      if (shouldUseDraftStream && hasStreamedMessage) {
+        await draftStream?.flush();
       }
       const draftMessageId = draftStream?.messageId();
       const draftChannelId = draftStream?.channelId();
