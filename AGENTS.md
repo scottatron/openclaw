@@ -9,6 +9,11 @@
 - Fork: `scottatron/openclaw` on branch `my-fork`
 - Track `upstream/main`
 - After rebasing onto a new upstream release, set the fork version in `package.json` to a date newer than the latest upstream release date, then append `-my-fork.<n>` so update checks continue to prefer the fork build over upstream (for example, if upstream is `2026.3.25`, use `2026.3.27-my-fork.1`).
+- After each rebase, produce a focused upstream-change summary for this fork that:
+  includes all general cross-cutting changes that could affect the gateway broadly
+  includes channel-specific changes only for Slack and Telegram
+  includes model/provider-specific changes only for OpenAI Codex, Anthropic, and GitHub Copilot
+  excludes other channel-specific and provider-specific change lists unless they are directly relevant to a general cross-cutting change that should be called out
 
 ## Project Structure & Module Organization
 
